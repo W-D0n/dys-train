@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	/* Mode dark par défaut */
+	html {
+		@apply dark;
+	}
+
+	body {
+		@apply bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100 min-h-screen;
+	}
+
+	/* Override des couleurs pour le dark mode */
+	.dark {
+		color-scheme: dark;
+	}
+}

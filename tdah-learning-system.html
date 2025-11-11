@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système TDAH - Apprentissage & Remédiation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-50 to-blue-50 min-h-screen">
+    <div id="app" class="p-4 max-w-6xl mx-auto"></div>
+
+    <script>
+        // État global
+        let state = {
+            activeTab: 'planning',
+            tasks: JSON.parse(localStorage.getItem('tdah-tasks') || '[]'),
+            cognitiveScore: JSON.parse(localStorage.getItem('tdah-scores') || '{"workingMemory": 0, "executive": 0}'),
+            dailyGoal: localStorage.getItem('tdah-daily-goal') || '',
+            nBackSequence: [],
+            currentIndex: 0,
+            nBackLevel: 1,
+            nBackScore: 0,
+            gameActive: false,
+            feedback: ''
+        };
+
+        // Tâches prédéfinies
+        const frontendTasks = [
+            { id: 1, title: 'HTML de base', subtasks: ['Réviser les balises sémantiques (15min)', 'Créer une page simple (20min)', 'Valider avec W3C (5min)'], category: 'html', time: 40 },
+            { id: 2, title: 'CSS Flexbox', subtasks: ['Lire doc Flexbox (10min)', 'Faire 3 exercices (20min)', 'Créer une navbar (15min)'], category: 'css', time: 45 },
+            { id: 3, title: 'JavaScript bases', subtasks: ['Variables et types (10min)', 'Fonctions (15min)', 'Exercices sur console (15min)'], category: 'js', time: 40 },
+            { id: 4, title: 'DOM Manipulation', subtasks: ['querySelector (10min)', 'addEventListener (15min)', 'Mini-projet click counter (20min)'], category: 'js', time: 45 },
+            { id: 5, title: 'CSS Grid', subtasks: ['Comprendre Grid (15min)', '3 layouts différents (25min)', 'Responsive avec Grid (15min)'], category: 'css', time: 55 },
+            { id: 6, title: 'Fetch API', subtasks: ['Syntaxe fetch (10min)', 'Appel API public (20min)', 'Afficher données (15min)'], category: 'js', time: 45 },
+            { id: 7, title: 'React Introduction', subtasks: ['Composants (15min)', 'Props (15min)', 'Premier composant (20min)'], category: 'react', time: 50 },
+            { id: 8, title: 'Git basics', subtasks: ['Init, add, commit (15min)', 'Branches (10min)', 'Push sur GitHub (10min)'], category: 'tools', time: 35 },
+        ];
+
+        const categoryColors = {
+            html: 'bg-orange-100 text-orange-700',
+            css: 'bg-blue-100 text-blue-700',
+            js: 'bg-yellow-100 text-yellow-700',
+            react: 'bg-cyan-100 text-cyan-700',
+            tools: 'bg-gray-100 text-gray-700'
+        };
+
+        // Fonctions de sauvegarde
+        function saveTasks() {
+            localStorage.setItem('tdah-tasks', JSON.stringify(state.tasks));
+        }
+
+        function saveScores() {
+            localStorage.setItem('tdah-scores', JSON.stringify(state.cognitiveScore));
+        }
+
+        function saveGoal() {
+            localStorage.setItem('tdah-daily-goal', state.dailyGoal);
+        }
+
+        // Fonctions principales
+        function addTaskToList(task) {
+            const newTask = {
+                ...task,
+                id: Date.now(),
+                completed: false,
+                subtasksCompleted: new Array(task.subtasks.length).fill(false),
+                dateAdded: new Date().toISOString()
+            };
+            state.tasks.push(newTask);
+            saveTasks();
+            render();
+        }
+
+        function toggleSubtask(taskId, subtaskIndex) {
+            const task = state.tasks.find(t => t.id === taskId);
+            if (task) {
+                const wasCompleted = task.subtasksCompleted[subtaskIndex];
+                task.subtasksCompleted[subtaskIndex] = !wasCompleted;
+                
+                if (!wasCompleted) {
+                    state.cognitiveScore.executive = Math.min(100, state.cognitiveScore.executive + 2);
+                    saveScores();
+                }
+                
+                task.completed = task.subtasksCompleted.every(s => s);
+                saveTasks();
+                render();
+            }
+        }
+
+        function removeTask(taskId) {
+            state.tasks = state.tasks.filter(t => t.id !== taskId);
+            saveTasks();
+            render();
+        }
+
+        function setTab(tab) {
+            state.activeTab = tab;
+            render();
+        }
+
+        function updateGoal(value) {
+            state.dailyGoal = value;
+            saveGoal();
+        }
+
+        // N-Back Game
+        function startNBackGame() {
+            const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+            state.nBackSequence = Array.from({ length: 20 }, () => 
+                letters[Math.floor(Math.random() * letters.length)]
+            );
+            state.currentIndex = 0;
+            state.nBackScore = 0;
+            state.gameActive = true;
+            state.feedback = '';
+            render();
+        }
+
+        function checkNBackAnswer(isMatch) {
+            if (state.currentIndex < state.nBackLevel) {
+                state.feedback = 'Trop tôt pour répondre !';
+                render();
+                setTimeout(() => {
+                    state.feedback = '';
+                    render();
+                }, 1000);
+                return;
+            }
+
+            const correctAnswer = state.nBackSequence[state.currentIndex] === 
+                                state.nBackSequence[state.currentIndex - state.nBackLevel];
+            const correct = isMatch === correctAnswer;
+            
+            state.feedback = correct ? '✓ Correct !' : '✗ Incorrect';
+            
+            if (correct) {
+                state.nBackScore++;
+                state.cognitiveScore.workingMemory = Math.min(100, state.cognitiveScore.workingMemory + 1);
+                saveScores();
+            }
+
+            render();
+
+            setTimeout(() => {
+                if (state.currentIndex < state.nBackSequence.length - 1) {
+                    state.currentIndex++;
+                    state.feedback = '';
+                } else {
+                    state.gameActive = false;
+                    state.feedback = `Terminé ! Score: ${state.nBackScore}/${state.nBackSequence.length - state.nBackLevel}`;
+                }
+                render();
+            }, 1000);
+        }
+
+        function setNBackLevel(level) {
+            state.nBackLevel = level;
+            render();
+        }
+
+        function resetNBack() {
+            state.nBackSequence = [];
+            state.currentIndex = 0;
+            state.nBackScore = 0;
+            state.gameActive = false;
+            state.feedback = '';
+            render();
+        }
+
+        // Rendu
+        function render() {
+            const app = document.getElementById('app');
+            
+            app.innerHTML = `
+                <!-- Header -->
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                            <h1 class="text-2xl font-bold text-gray-800">Système TDAH - Apprentissage & Remédiation</h1>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="text-center">
+                                <div class="text-sm text-gray-600">Mémoire de travail</div>
+                                <div class="text-2xl font-bold text-purple-600">${state.cognitiveScore.workingMemory}%</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm text-gray-600">Fonctions exécutives</div>
+                                <div class="text-2xl font-bold text-blue-600">${state.cognitiveScore.executive}%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <input
+                            type="text"
+                            placeholder="Mon objectif principal aujourd'hui..."
+                            value="${state.dailyGoal}"
+                            onchange="updateGoal(this.value)"
+                            class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        />
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="bg-white rounded-lg shadow-lg mb-6">
+                    <div class="flex border-b">
+                        <button
+                            onclick="setTab('planning')"
+                            class="flex-1 py-3 px-4 font-medium transition-colors ${
+                                state.activeTab === 'planning'
+                                    ? 'border-b-2 border-purple-600 text-purple-600'
+                                    : 'text-gray-600 hover:text-gray-800'
+                            }"
+                        >
+                            📅 Planification
+                        </button>
+                        <button
+                            onclick="setTab('cognitive')"
+                            class="flex-1 py-3 px-4 font-medium transition-colors ${
+                                state.activeTab === 'cognitive'
+                                    ? 'border-b-2 border-purple-600 text-purple-600'
+                                    : 'text-gray-600 hover:text-gray-800'
+                            }"
+                        >
+                            🧠 Entraînement Cognitif
+                        </button>
+                        <button
+                            onclick="setTab('strategies')"
+                            class="flex-1 py-3 px-4 font-medium transition-colors ${
+                                state.activeTab === 'strategies'
+                                    ? 'border-b-2 border-purple-600 text-purple-600'
+                                    : 'text-gray-600 hover:text-gray-800'
+                            }"
+                        >
+                            ⚡ Stratégies TDAH
+                        </button>
+                    </div>
+
+                    <div class="p-6">
+                        ${renderTabContent()}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTabContent() {
+            if (state.activeTab === 'planning') {
+                return renderPlanningTab();
+            } else if (state.activeTab === 'cognitive') {
+                return renderCognitiveTab();
+            } else {
+                return renderStrategiesTab();
+            }
+        }
+
+        function renderPlanningTab() {
+            const activeTasks = state.tasks.map(task => `
+                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50 mb-4">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${categoryColors[task.category]}">
+                                    ${task.category.toUpperCase()}
+                                </span>
+                                <h3 class="font-bold text-gray-800">${task.title}</h3>
+                                <span class="text-sm text-gray-500">(${task.time}min)</span>
+                            </div>
+                            <div class="space-y-2">
+                                ${task.subtasks.map((subtask, idx) => `
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="toggleSubtask(${task.id}, ${idx})" class="focus:outline-none">
+                                            ${task.subtasksCompleted[idx] 
+                                                ? '<span class="text-green-600 text-xl">✓</span>'
+                                                : '<span class="text-gray-400 text-xl">○</span>'
+                                            }
+                                        </button>
+                                        <span class="${task.subtasksCompleted[idx] ? 'line-through text-gray-500' : 'text-gray-700'}">
+                                            ${subtask}
+                                        </span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <button onclick="removeTask(${task.id})" class="text-red-500 hover:text-red-700 text-sm ml-4">
+                            Retirer
+                        </button>
+                    </div>
+                    <div class="mt-2">
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-purple-600 h-2 rounded-full transition-all" 
+                                 style="width: ${(task.subtasksCompleted.filter(Boolean).length / task.subtasks.length) * 100}%">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-3">Mes Tâches Actives</h2>
+                    ${state.tasks.length === 0 
+                        ? '<div class="text-center py-8 text-gray-500"><p>Aucune tâche active. Ajoute-en une ci-dessous !</p></div>'
+                        : activeTasks
+                    }
+                    
+                    <h2 class="text-xl font-bold text-gray-800 mb-3 mt-6">Parcours Frontend Suggéré</h2>
+                    <p class="text-sm text-gray-600 mb-4">
+                        Tâches découpées en micro-étapes. Ajoute-les une par une pour éviter la surcharge cognitive.
+                    </p>
+                    <div class="grid md:grid-cols-2 gap-3">
+                        ${frontendTasks.map(task => `
+                            <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex-1">
+                                        <span class="px-2 py-1 rounded text-xs font-medium ${categoryColors[task.category]} mb-2 inline-block">
+                                            ${task.category.toUpperCase()}
+                                        </span>
+                                        <h3 class="font-bold text-gray-800">${task.title}</h3>
+                                        <p class="text-sm text-gray-600">Durée: ${task.time}min</p>
+                                    </div>
+                                    <button
+                                        onclick='addTaskToList(${JSON.stringify(task)})'
+                                        class="bg-purple-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-purple-700 transition-colors"
+                                    >
+                                        Ajouter
+                                    </button>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-2">
+                                    ${task.subtasks.length} étapes
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCognitiveTab() {
+            return `
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">Exercices de Mémoire de Travail</h2>
+                    
+                    <div class="bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg p-6 mb-6">
+                        <h3 class="font-bold text-lg mb-2">N-Back Task (Niveau ${state.nBackLevel})</h3>
+                        <p class="text-sm text-gray-700 mb-4">
+                            Appuie sur "Oui" si la lettre actuelle est identique à celle d'il y a ${state.nBackLevel} position${state.nBackLevel > 1 ? 's' : ''}.
+                        </p>
+
+                        ${!state.gameActive && state.nBackSequence.length === 0 ? `
+                            <div class="text-center">
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium mb-2">Choisis le niveau:</label>
+                                    <select onchange="setNBackLevel(parseInt(this.value))" class="p-2 border border-gray-300 rounded-lg">
+                                        <option value="1" ${state.nBackLevel === 1 ? 'selected' : ''}>1-Back (Facile)</option>
+                                        <option value="2" ${state.nBackLevel === 2 ? 'selected' : ''}>2-Back (Moyen)</option>
+                                        <option value="3" ${state.nBackLevel === 3 ? 'selected' : ''}>3-Back (Difficile)</option>
+                                    </select>
+                                </div>
+                                <button onclick="startNBackGame()" class="bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+                                    ▶ Commencer l'exercice
+                                </button>
+                            </div>
+                        ` : ''}
+
+                        ${state.gameActive ? `
+                            <div class="text-center">
+                                <div class="text-6xl font-bold text-purple-700 mb-6 h-20 flex items-center justify-center">
+                                    ${state.nBackSequence[state.currentIndex]}
+                                </div>
+                                <div class="text-sm text-gray-600 mb-4">
+                                    Position: ${state.currentIndex + 1} / ${state.nBackSequence.length}
+                                </div>
+                                <div class="flex gap-4 justify-center mb-4">
+                                    <button onclick="checkNBackAnswer(true)" class="bg-green-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                                        OUI - Identique
+                                    </button>
+                                    <button onclick="checkNBackAnswer(false)" class="bg-red-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                                        NON - Différent
+                                    </button>
+                                </div>
+                                ${state.feedback ? `
+                                    <div class="text-lg font-bold ${state.feedback.includes('✓') ? 'text-green-600' : 'text-red-600'}">
+                                        ${state.feedback}
+                                    </div>
+                                ` : ''}
+                                <div class="text-sm text-gray-600 mt-4">
+                                    Score: ${state.nBackScore}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${!state.gameActive && state.nBackSequence.length > 0 ? `
+                            <div class="text-center">
+                                <div class="text-lg mb-4">${state.feedback}</div>
+                                <button onclick="resetNBack()" class="bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+                                    🔄 Recommencer
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <h4 class="font-bold text-yellow-800 mb-2">💡 Conseil</h4>
+                        <p class="text-sm text-yellow-700">
+                            Pratique 10-15 minutes par jour pour de meilleurs résultats. L'entraînement régulier améliore la neuroplasticité !
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStrategiesTab() {
+            return `
+                <div class="space-y-6">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                        <h3 class="font-bold text-lg text-blue-800 mb-3">🎯 Stratégies pour la Mémoire de Travail</h3>
+                        <ul class="space-y-2 text-sm text-blue-900">
+                            <li><strong>Chunking:</strong> Regroupe l'information par paquets (ex: 06-12-34-56-78 plutôt que 0612345678)</li>
+                            <li><strong>Externalisation:</strong> Note TOUT immédiatement. Ton cerveau n'est pas fait pour tout retenir.</li>
+                            <li><strong>Répétition espacée:</strong> Révise l'info après 1h, 1 jour, 1 semaine pour ancrer dans la mémoire longue</li>
+                            <li><strong>Association visuelle:</strong> Crée des images mentales pour les concepts abstraits</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+                        <h3 class="font-bold text-lg text-green-800 mb-3">⚡ Stratégies pour les Fonctions Exécutives</h3>
+                        <ul class="space-y-2 text-sm text-green-900">
+                            <li><strong>Règle des 2 minutes:</strong> Si ça prend moins de 2min, fais-le immédiatement</li>
+                            <li><strong>Timeboxing:</strong> Fixe une durée précise (25min) puis pause obligatoire</li>
+                            <li><strong>Micro-objectifs:</strong> Découpe TOUT en étapes de 5-15min maximum</li>
+                            <li><strong>Environnement contrôlé:</strong> Élimine les distractions avant de commencer (téléphone, notifs...)</li>
+                            <li><strong>Routine de démarrage:</strong> Crée un rituel pour "lancer" ton cerveau (musique, café, timer...)</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-6">
+                        <h3 class="font-bold text-lg text-purple-800 mb-3">🧠 Spécial Développement Frontend</h3>
+                        <ul class="space-y-2 text-sm text-purple-900">
+                            <li><strong>Un concept à la fois:</strong> Ne mélange pas HTML/CSS/JS dans la même session au début</li>
+                            <li><strong>Projet fil rouge:</strong> Construis le même site en ajoutant progressivement des features</li>
+                            <li><strong>Documentation ouverte:</strong> Pas de honte à consulter MDN/docs en permanence</li>
+                            <li><strong>Copy-paste intelligent:</strong> Copie du code, mais TOUJOURS le retaper à la main après pour comprendre</li>
+                            <li><strong>Célèbre chaque micro-victoire:</strong> Un bouton qui fonctionne = VICTOIRE. Reconnais-le.</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-6">
+                        <h3 class="font-bold text-lg text-orange-800 mb-3">⏰ Gestion du Temps & Énergie</h3>
+                        <ul class="space-y-2 text-sm text-orange-900">
+                            <li><strong>Identifie ton pic d'énergie:</strong> Code pendant tes moments de meilleure concentration</li>
+                            <li><strong>Accepte les jours "off":</strong> Certains jours, tu ne coderas que 15min. C'est OK.</li>
+                            <li><strong>Système de points:</strong> Chaque micro-tâche = points. Gamifie ta progression.</li>
+                            <li><strong>Pause obligatoire:</strong> Toutes les 25-30min, lève-toi 5min. Non négociable.</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Initialisation
+        render();
+    </script>
+</body>
+</html>
